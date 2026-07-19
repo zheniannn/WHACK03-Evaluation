@@ -4,9 +4,9 @@ Track-based **target-vs-clutter discrimination** on the simulated radar
 detections from [WHACK02-Radar](https://github.com/zheniannn/WHACK02-Radar). At a
 low CFAR threshold the detection stream is ~99% false alarms and clutter; this
 repo forms candidate tracks and then scores each one *"how target-like"* with
-seven discriminators — a classical baseline, two more classical methods, two
-supervised-ML methods, and two label-free one-class motion priors — evaluated on
-a held-out day.
+eight discriminators — a classical baseline, two more classical methods, two
+supervised-ML methods, two label-free one-class motion priors, and a label-free
+multi-channel fusion — evaluated on a held-out day.
 
 This tests the central claim of the problem statement: *a valid target follows a
 physically plausible path and exhibits consistent motion across scans*, so motion
@@ -28,9 +28,10 @@ WHACK03-Evaluation/
 │   ├── 13_GBM.py            # supervised ML: gradient-boosted trees (31 features)
 │   ├── 14_GRU.py            # supervised ML: recurrent sequence model
 │   ├── 15_IMM.py            # classical motion: IMM cv-fraction
-│   ├── 16_VAE.py            # one-class: Trajectory-VAE (motion manifold)
-│   ├── 17_Latent-SDE.py     # one-class: latent neural SDE (gap-aware)
-│   └── 18_Evaluation.py     # compare all methods (P/R/F1, AUC, clutter survival)
+│   ├── 16_VAE.py            # one-class: Trajectory-VAE, trained on clean target tracks (tracker domain)
+│   ├── 17_Fusion.py         # label-free: reliability-weighted motion(VAE)+amplitude(SNR)+length fusion
+│   ├── 18_Latent-SDE.py     # one-class: latent neural SDE (gap-aware)
+│   └── 19_Evaluation.py     # compare all methods (P/R/F1, AUC, clutter survival)
 └── utils/
     ├── io.py                # paths, DATES, train/test split
     ├── data.py              # per-track point loaders
@@ -61,8 +62,8 @@ root defaults to `data/` next to the repo (override `WHACK_DATA_ROOT`).
 ├── trajectories_10s/              # WHACK01 real GA motion (VAE/SDE training)
 └── discrimination/
     ├── tracks/                    # stage 10: tracks + per-scan points
-    ├── scores/                    # stages 11-17: <method>_<date>.csv, + all_methods_<date>.csv
-    └── eval/                      # stage 18: evaluation_report.json
+    ├── scores/                    # stages 11-18: <method>_<date>.csv, + all_methods_<date>.csv
+    └── eval/                      # stage 19: evaluation_report.json
 ```
 
 ## Usage
@@ -76,13 +77,14 @@ python scripts/13_GBM.py
 python scripts/14_GRU.py
 python scripts/15_IMM.py
 python scripts/16_VAE.py
-python scripts/17_Latent-SDE.py
-python scripts/18_Evaluation.py      # merge + compare -> scorecard + report
+python scripts/17_Fusion.py           # needs 16_VAE; label-free motion+amplitude+length fusion
+python scripts/18_Latent-SDE.py
+python scripts/19_Evaluation.py      # merge + compare -> scorecard + report
 ```
 
 Days 06-06/13/20 train; **06-27 is held out** (`utils/io.py::TEST_DATE`).
 
-## The seven methods
+## The eight methods
 
 | Stage | Method | Type | How it decides |
 |---|---|---|---|
@@ -91,12 +93,15 @@ Days 06-06/13/20 train; **06-27 is held out** (`utils/io.py::TEST_DATE`).
 | 13 | **GBM** | supervised ML | HistGradientBoosting on 31 track features |
 | 14 | **GRU** | supervised ML | recurrent net on the per-scan sequence |
 | 15 | **IMM** | classical motion | CV + coordinated-turn Kalman bank; score = constant-velocity mode fraction |
-| 16 | **Traj-VAE** | one-class ML | reconstruction error under a VAE trained only on real GA motion |
-| 17 | **Latent-SDE** | one-class ML | reconstruction error under a gap-aware latent neural SDE |
+| 16 | **Traj-VAE** | one-class ML | reconstruction error under a VAE trained on clean target tracks (tracker domain, not ADS-B) |
+| 17 | **Fusion** | label-free fusion | reliability-weighted motion(VAE) + amplitude(SNR/radar-eq) + length; label-free ceiling F1 ≈ 0.77 @ n_det≥12 |
+| 18 | **Latent-SDE** | one-class ML | reconstruction error under a gap-aware latent neural SDE |
 
 Classical scores use only the tracker's estimated range and the scenario's own Pd
-model; the one-class methods train only on real WHACK01 motion — **none reads the
-tracker's labels** (used only for evaluation in stage 18).
+model; the one-class methods (Traj-VAE and Latent-SDE) both train on clean target
+tracks in the tracker domain — real-aircraft detections run through the tracker, no
+clutter/noise — and the Fusion adds the scenario's radar-equation amplitude channel.
+**None reads the tracker's labels** (used only for evaluation in stage 19).
 
 ## Notes
 

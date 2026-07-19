@@ -5,7 +5,7 @@ three training days (class-weighted for the ~0.7% positive rate), predict a
 target-probability on the held-out day.
 
 Writes  scores/gbm_<TEST_DATE>.csv  [track_id, score_gbm].
-Usage:  python scripts/13_GBM.py
+Usage:  python scripts/14_GBM.py
 """
 import os
 import sys

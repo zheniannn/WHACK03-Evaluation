@@ -30,8 +30,15 @@ class Physics:
     tracker's estimated range (not truth)."""
 
     def __init__(self, sc: dict):
-        self.tau = 10 ** (sc["threshold_min_db"] / 10)
-        self.snr_ref_lin = 10 ** (sc["snr_ref_db"] / 10)
+        # WHACK02 nests derived radar quantities (snr_ref_db, ...) under
+        # "_derived"; fall back to it when they are not at the top level.
+        der = sc.get("_derived", {})
+
+        def _get(key):
+            return sc[key] if key in sc else der[key]
+
+        self.tau = 10 ** (_get("threshold_min_db") / 10)
+        self.snr_ref_lin = 10 ** (_get("snr_ref_db") / 10)
         self.range_ref = sc["range_ref_m"]
         n_range = int((sc["range_max_m"] - sc["range_min_m"]) / sc["range_resolution_m"])
         n_az = int(round(360.0 / sc["azimuth_beamwidth_deg"]))

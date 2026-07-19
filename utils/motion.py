@@ -14,11 +14,15 @@
 Paths resolve through utils.io; nothing here reads truth beyond the training
 motion (which is real-flight kinematics, not the tracker's labels).
 """
+import json
+import os
+
 import numpy as np
 import pandas as pd
 
 from utils.io import (TRAIN_DATES, TEST_DATE, get_track_points_path,
-                      get_tracks_path, get_real_trajectories_path)
+                      get_tracks_path, get_real_trajectories_path,
+                      get_scenario_path, get_detections_path, get_discrimination_dir)
 
 DT = 10.0
 
@@ -71,6 +75,42 @@ def load_real_motion(dates, max_traj=None):
                 seqs.append((sp, tr))
             if max_traj and len(seqs) >= max_traj:
                 return seqs
+    return seqs
+
+
+def _clean_target_points_path(date: str) -> str:
+    return os.path.join(get_discrimination_dir(), "clean_target", f"points_{date}.csv")
+
+
+def load_clean_target_motion(dates, with_scan=False):
+    """(speed, turn[, scan]) per CLEAN TARGET TRACK -- the tracker run on
+    target-only detections (source=='target'; KF-smoothed, no clutter/noise),
+    cached under discrimination/clean_target/. Same representation and domain as
+    the candidate tracks the one-class models score, so training and scoring match
+    (closes the ADS-B train/test domain gap). with_scan=True also returns the
+    per-track scan indices so the SDE can use the real per-scan dt (Pd gaps)."""
+    from utils.tracker import run_day     # local import: tracker has no utils deps
+
+    with open(get_scenario_path()) as f:
+        sc = json.load(f)
+    sigma_r, sigma_az = sc["sigma_range_m"], sc["sigma_azimuth_deg"]
+
+    seqs = []
+    for d in dates:
+        path = _clean_target_points_path(d)
+        if not os.path.exists(path):
+            det = pd.read_csv(get_detections_path(d), dtype={"trajectory_id": str, "icao24": str})
+            det = det[det["source"] == "target"].reset_index(drop=True)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            run_day(d, det, sigma_r, sigma_az, path)   # writes KF-smoothed track points
+        tp = pd.read_csv(path, usecols=["track_id", "scan_idx", "est_e", "est_n", "miss"])
+        tp = tp[tp["miss"] == 0].sort_values(["track_id", "scan_idx"])
+        for _, g in tp.groupby("track_id", sort=False):
+            e = g["est_e"].to_numpy(float); n = g["est_n"].to_numpy(float)
+            scan = g["scan_idx"].to_numpy()
+            if len(e) >= 4:
+                sp, tr = track_speed_turn(e, n, scan)
+                seqs.append((sp, tr, scan) if with_scan else (sp, tr))
     return seqs
 
 

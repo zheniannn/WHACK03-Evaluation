@@ -5,7 +5,7 @@ training days (false tracks subsampled, positives up-weighted), predict a
 target-probability on the held-out day.
 
 Writes  scores/gru_<TEST_DATE>.csv  [track_id, score_gru].
-Usage:  python scripts/14_GRU.py
+Usage:  python scripts/15_GRU.py
 """
 import os
 import sys

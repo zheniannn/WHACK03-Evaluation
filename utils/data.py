@@ -31,3 +31,27 @@ def load_track_meta(date):
     """tracks table (label, track_source, n_det, range_median_m) per track_id."""
     return pd.read_csv(get_tracks_path(date),
                        usecols=["track_id", "label", "track_source", "n_det", "range_median_m"])
+
+
+def report_gated_f1(track_ids, score, date, gate=12, label="method"):
+    """Print a per-track score's best-F1 at a length gate (recall vs ALL true
+    tracks). Lets a raw motion stage self-report its realistic operating point
+    (~0.6 gated) instead of only the ungated full-population F1 (~0.01) the
+    stage-19 scorecard shows -- the ungated number is dominated by the ~94%
+    short-noise false tracks a pure motion prior cannot reject."""
+    meta = load_track_meta(date).set_index("track_id").reindex(np.asarray(track_ids))
+    y = (meta["label"].to_numpy() == 1).astype(int)
+    nd = meta["n_det"].to_numpy(float)
+    s = np.where(np.isfinite(score), score, -1e18).astype(float)
+    s = np.where(nd >= gate, s, -1e18)
+    P = max(int(y.sum()), 1)
+    o = np.argsort(-s)
+    tp = np.cumsum(y[o] == 1)
+    k = np.arange(1, len(s) + 1)
+    prec = tp / k
+    rec = tp / P
+    f1 = 2 * prec * rec / np.maximum(prec + rec, 1e-12)
+    i = int(np.argmax(f1))
+    print(f"  {label} gated best-F1 @ n_det>={gate}: F1 {f1[i]:.3f}  (P {prec[i]:.3f}  R {rec[i]:.3f})  "
+          f"[stage-19 scorecard shows the ungated full-population F1]")
+
